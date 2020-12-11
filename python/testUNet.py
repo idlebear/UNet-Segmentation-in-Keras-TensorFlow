@@ -1,9 +1,10 @@
 
+from PIL import Image
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.preprocessing.image import load_img
 
-from IPython.display import Image, display
+# from IPython.display import Image, display
 import PIL
 from PIL import ImageOps
 
@@ -60,11 +61,6 @@ def load_data_list(image_path, mask_path=None):
                 if '_road' in fname]
         )
 
-    #     # Display an example training image and accompanying mask
-    #     display(Image(filename=training_image_list[9]))
-    #     img = PIL.ImageOps.autocontrast(load_img(training_gt_list[9]))
-    #     display(img)
-
     return image_list, mask_list
 
 
@@ -84,22 +80,19 @@ class RoadSeq(keras.utils.Sequence):
         return len(self.image_list) // self.batch_size
 
     def __getitem__(self, idx):
-        """
-
-        Returns tuple (input, target) correspond to batch #idx.
-
-        """
-
         # Now with data augmentation function...
 
         i = idx * self.batch_size
         batch_image_list = self.image_list[i: i + self.batch_size]
-        if self.gt_list is not None:
-            batch_gt_list = self.gt_list[i: i + self.batch_size]
         x = np.zeros((self.batch_size,) +
                      self.image_size + (3,), dtype="float32")
-        y = np.zeros((self.batch_size,) +
-                     self.image_size + (1,), dtype="float32")
+
+        if self.gt_list is not None:
+            batch_gt_list = self.gt_list[i: i + self.batch_size]
+            y = np.zeros((self.batch_size,) +
+                         self.image_size + (1,), dtype="float32")
+        else:
+            y = None
 
         for j in range(len(batch_image_list)):
             image_path = batch_image_list[j]
@@ -158,31 +151,42 @@ class RoadSeq(keras.utils.Sequence):
                 # only keep the blue layer (road)
                 y[j, :, :, 0] = mask[:, :, 2] / 255.0
 
-        return tf.convert_to_tensor(x, dtype=tf.float32), tf.convert_to_tensor(y, dtype=tf.float32)
+        if y is not None:
+            y = tf.convert_to_tensor(y, dtype=tf.float32)
+
+        x = tf.convert_to_tensor(x, dtype=tf.float32)
+
+        return x, y
 
 
-training_data_list, training_mask_list = load_data_list('./data_road/training/image_2',
-                                                        './data_road/training/gt_image_2')
+training_data_list, training_mask_list = load_data_list('./data_road/testing/image_2',
+                                                        None)
 
 
-def display_results(data, masks, result):
+def display_results(data, masks, results):
     # fig = plt.figure()
     # fig.subplots_adjust(hspace=0.4, wspace=0.4)
     t = np.shape(data)
 
-    for i in range(t[0]):
+    for j in range(5):
 
-        plt.figure()
-        image = np.reshape(data[i], image_size+(3,))
+        # i = random.randint(0, t[0])
+
+        plt.figure(figsize)
+        # image = np.reshape(data[i], image_size+(3,))
+        image = Image.open(data[i])
+        image = image.resize((768, 224))
         plt.imshow(image)
 
-        plt.figure()
-        plt.imshow(np.reshape(masks[i]*255, image_size), cmap="gray")
+        if masks is not None:
+            plt.figure()
+            plt.imshow(np.reshape(masks[i]*255, image_size), cmap="gray")
 
-        plt.figure()
-        plt.imshow(image)
-        plt.imshow(np.reshape(result[i]*255, image_size),
-                   'Oranges', interpolation='none', alpha=0.7)
+        for r in results:
+            plt.figure()
+            plt.imshow(image)
+            plt.imshow(np.reshape(r[i]*255, image_size),
+                       'Oranges', interpolation='none', alpha=0.7)
 
     plt.show()
     pass
@@ -192,12 +196,17 @@ def run_demo(name, experiment, image_size, training_data_list, training_mask_lis
              model_spec=[16, 32, 64, 128, 256], preprocess_list=None,
              preprocess_stretch=False, preprocess_mask=None, keep_image=True):
 
+    # make copies of the input array before shuffling
+    training_data_list = list(training_data_list)
     random.Random(experiment*42).shuffle(training_data_list)
-    random.Random(experiment*42).shuffle(training_mask_list)
-
-    # we're augmenting data -- expand the list of training data
     test_input_img_paths = training_data_list[-test_samples:]
-    test_target_img_paths = training_mask_list[-test_samples:]
+
+    if training_mask_list is not None:
+        training_mask_list = list(training_mask_list)
+        random.Random(experiment*42).shuffle(training_mask_list)
+        test_target_img_paths = training_mask_list[-test_samples:]
+    else:
+        test_target_img_paths = None
 
     pp = None
     # Chain of preprocessing functions, first one added is performed first
@@ -233,7 +242,7 @@ def run_demo(name, experiment, image_size, training_data_list, training_mask_lis
     results = model.predict(x)
     results = np.array(results > 0.5).astype(np.uint8)
 
-    display_results(x, y, results)
+    return results
 
 
 # Split our img paths into a training and a validation set
@@ -248,17 +257,20 @@ model_specs = {
 }
 
 
-# run_demo(name='gd_only_reg_0_1_2_5', experiment=4, image_size=image_size,
-#          training_data_list=training_data_list,
-#          training_mask_list=training_mask_list,
-#          model_spec=model_specs['reg'], preprocess_list=[0, 1, 2, 5])
+img_grad = run_demo(name='gd_only_reg_0_1_2_5', experiment=1, image_size=image_size,
+                    training_data_list=training_data_list,
+                    training_mask_list=training_mask_list,
+                    model_spec=model_specs['reg'], preprocess_list=[0, 1, 2, 5])
 
-run_demo(name='reg', experiment=1, image_size=image_size,
-         training_data_list=training_data_list,
-         training_mask_list=training_mask_list,
-         model_spec=model_specs['reg'], preprocess_list=None)
+reg = run_demo(name='reg', experiment=1, image_size=image_size,
+               training_data_list=training_data_list,
+               training_mask_list=training_mask_list,
+               model_spec=model_specs['reg'], preprocess_list=None)
 
-run_demo(name='gd_only_reg_1_2_5', experiment=1, image_size=image_size,
-         training_data_list=training_data_list,
-         training_mask_list=training_mask_list,
-         model_spec=model_specs['reg'], preprocess_list=[1, 2, 5], preprocess_stretch=True)
+grad = run_demo(name='gd_only_reg_1_2_5', experiment=1, image_size=image_size,
+                training_data_list=training_data_list,
+                training_mask_list=training_mask_list,
+                model_spec=model_specs['reg'], preprocess_list=[1, 2, 5], preprocess_stretch=True)
+
+display_results(
+    training_data_list[-test_samples:], None, [img_grad, reg, grad])

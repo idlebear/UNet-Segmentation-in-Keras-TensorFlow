@@ -84,12 +84,6 @@ class RoadSeq(keras.utils.Sequence):
         return len(self.image_list) // self.batch_size
 
     def __getitem__(self, idx):
-        """
-
-        Returns tuple (input, target) correspond to batch #idx.
-
-        """
-
         # Now with data augmentation function...
 
         i = idx * self.batch_size
@@ -163,21 +157,6 @@ class RoadSeq(keras.utils.Sequence):
 
 training_data_list, training_mask_list = load_data_list('./data_road/training/image_2',
                                                         './data_road/training/gt_image_2')
-
-
-gen = RoadSeq(batch_size=batch_size, image_size=image_size,
-              training_image_list=training_data_list, training_gt_list=training_mask_list)
-
-x, y = gen.__getitem__(0)
-print(x.shape, y.shape)
-r = random.randint(0, len(x)-1)
-
-fig = plt.figure(figsize=(25, 75))
-fig.subplots_adjust(hspace=0.4, wspace=0.4)
-ax = fig.add_subplot(1, 2, 1)
-ax.imshow(x[r])
-ax = fig.add_subplot(1, 2, 2)
-ax.imshow(np.reshape(y[r], image_size), cmap="gray")
 
 
 def display_results(data, masks, result):
@@ -276,10 +255,14 @@ def calculate_error(results, mask_list):
     return (precision_total/n, recall_total/n, f1_total/n, acc_total/n)
 
 
-def run_test(name, experiment, image_size, training_data_list, training_mask_list,
-             model_spec=[16, 32, 64, 128, 256], preprocess_list=None,
-             preprocess_stretch=False, preprocess_mask=None, keep_image=True,
-             load_model=False, epochs=15):
+def train_model(name, experiment, image_size, training_data_list, training_mask_list,
+                model_spec=[16, 32, 64, 128, 256], preprocess_list=None,
+                preprocess_stretch=False, preprocess_mask=None, keep_image=True,
+                load_model=False, epochs=15):
+
+    # make copies of the input array before shuffling
+    training_data_list = list(training_data_list)
+    training_mask_list = list(training_mask_list)
 
     random.Random(experiment*42).shuffle(training_data_list)
     random.Random(experiment*42).shuffle(training_mask_list)
@@ -359,56 +342,9 @@ def run_test(name, experiment, image_size, training_data_list, training_mask_lis
     return calculate_error(results, test_target_img_paths) + (prediction_time,)
 
 
-def test_model(name, experiment, image_size, training_data_list, training_mask_list, preprocess_list=None,
-               preprocess_stretch=False, preprocess_mask=None, keep_image=True):
-
-    random.Random(experiment*42).shuffle(training_data_list)
-    random.Random(experiment*42).shuffle(training_mask_list)
-
-    # we're augmenting data -- expand the list of training data
-    test_input_img_paths = training_data_list[-test_samples:]
-    test_target_img_paths = training_mask_list[-test_samples:]
-
-    pp = None
-    # Chain of preprocessing functions, first one added is performed first
-    if preprocess_list is not None:
-        # Instantiate data Sequences for each split
-        if not preprocess_stretch:
-            pp = ImagePreprocessGradient(preprocess_list, keep_image, pp)
-        else:
-            pp = ImagePreprocessStretchedGradient(preprocess_list, pp)
-
-    if preprocess_mask is not None:
-        # Apply mask after gradients - masking first only gets overwritten
-        pp = ImagePreprocessMask(preprocess_mask, pp)
-
-    if pp is not None:
-        # Instantiate pre-processed data sequences for each split
-        test_gen = RoadSeq(len(test_input_img_paths), image_size,
-                           test_input_img_paths, test_target_img_paths, augment_data=False,
-                           preprocess_fn=pp.preprocess())
-
-    else:
-        # use the images as they are
-        test_gen = RoadSeq(len(test_input_img_paths), image_size,
-                           test_input_img_paths, test_target_img_paths, augment_data=False)
-
-    model_name = name+'.'+str(ex)+'.h5'
-    model = UNet(image_size, model_spec)
-    model.compile(optimizer="adam",
-                  loss="binary_crossentropy", metrics=["acc"])
-    model.load_weights(model_name)
-
-    x, y = test_gen.__getitem__(0)
-    results = model.predict(x)
-    results = np.array(results > 0.5).astype(np.uint8)
-
-    display_results(x, test_target_img_paths, results)
-
 #
 # ## Training!
 #
-
 
 # Split our img paths into a training and a validation set
 test_samples = len(training_data_list) // test_reserve
@@ -443,8 +379,8 @@ model_specs = {
     'reg': [16, 32, 64, 128, 256]  # ~2M parameters
 }
 
-experiments = 5
-rounds = 25
+experiments = 2
+rounds = 20
 epochs = 10
 base = 0
 
@@ -456,41 +392,41 @@ f.write('name,experiment,round,precision,recall,f1,accuracy,time\n')  # header r
 
 for name in model_specs:
 
-    for gl in gradient_levels:
-        s_lead = '_'.join(['gd_only', name] + [str(i) for i in gl])
+    # for gl in gradient_levels:
+    #     s_lead = '_'.join(['gd_only', name] + [str(i) for i in gl])
 
-        for ex in range(3, 3+experiments):
-            for r in range(base, rounds+base):
-                data = run_test(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
-                                training_mask_list=training_mask_list, model_spec=model_specs[
-                                    name], preprocess_list=gl,
-                                preprocess_stretch=True, keep_image=False,
-                                load_model=(r is not 0), epochs=epochs)
-                s = ','.join([s_lead, str(ex), str(r)]
-                             + [str(i) for i in data])
-                s += '\n'
-                f.write(s)
-                f.flush()
+    #     for ex in range(3, 3+experiments):
+    #         for r in range(base, rounds+base):
+    #             data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
+    #                             training_mask_list=training_mask_list, model_spec=model_specs[
+    #                                 name], preprocess_list=gl,
+    #                             preprocess_stretch=True, keep_image=False,
+    #                             load_model=(r is not 0), epochs=epochs)
+    #             s = ','.join([s_lead, str(ex), str(r)]
+    #                          + [str(i) for i in data])
+    #             s += '\n'
+    #             f.write(s)
+    #             f.flush()
 
-    # s_lead = name
-    # for ex in range(experiments):
+    s_lead = name
+    for ex in range(experiments):
 
-    #     for r in range(base, rounds+base):
-    #         data = run_test(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
-    #                         training_mask_list=training_mask_list, model_spec=model_specs[
-    #                             name], preprocess_list=None, load_model=True,
-    #                         epochs=epochs)
-    #         s = ','.join([s_lead, str(ex), str(r)] + [str(i) for i in data])
-    #         s += '\n'
-    #         f.write(s)
-    #         f.flush()
+        for r in range(base, rounds+base):
+            data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
+                               training_mask_list=training_mask_list, model_spec=model_specs[
+                                   name], preprocess_list=None, load_model=(r is not 0),
+                               epochs=epochs)
+            s = ','.join([s_lead, str(ex), str(r)] + [str(i) for i in data])
+            s += '\n'
+            f.write(s)
+            f.flush()
 
     # s_lead = 'gd_only_'+name
     # for gl in gradient_levels:
     #     for r in range(rounds):
     #         s = '_'.join([s_lead] + [str(i) for i in gl])
 
-    #         data = run_test(name=s, image_size=image_size, training_data_list=training_data_list,
+    #         data = train_model(name=s, image_size=image_size, training_data_list=training_data_list,
     #                         training_mask_list=training_mask_list, model_spec=model_specs[
     #                             name], preprocess_list=gl,
     #                         preprocess_stretch=False, keep_image=False, load_model=True, epochs=epochs)
