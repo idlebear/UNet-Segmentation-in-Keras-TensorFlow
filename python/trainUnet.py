@@ -18,6 +18,7 @@ import random
 from model import UNet
 from image_processing import ImagePreprocessGradient, ImagePreprocessMask
 from image_processing import ImagePreprocessStretchedGradient
+from image_processing import ImagePreprocessFisherize
 
 print("Num GPUs Available: ", len(
     tf.config.experimental.list_physical_devices('GPU')))
@@ -111,14 +112,14 @@ class RoadSeq(keras.utils.Sequence):
                 if self.gt_list is not None:
                     mask = load_img(mask_path)
 
+            img = np.array(img).astype('float32')
+            if self.gt_list is not None:
+                mask = np.array(mask).astype('float32')
+
             try:
                 img = self.preprocess_fn(img)
             except Exception:
                 pass
-
-            img = np.array(img).astype('float32')
-            if self.gt_list is not None:
-                mask = np.array(mask).astype('float32')
 
             if self.augment_data:
                 if random.random() < 0.3:
@@ -257,7 +258,8 @@ def calculate_error(results, mask_list):
 
 def train_model(name, experiment, image_size, training_data_list, training_mask_list,
                 model_spec=[16, 32, 64, 128, 256], preprocess_list=None,
-                preprocess_stretch=False, preprocess_mask=None, keep_image=True,
+                preprocess_stretch=False, preprocess_mask=None,
+                preprocess_fisher=False, keep_image=True,
                 load_model=False, epochs=15):
 
     # make copies of the input array before shuffling
@@ -293,6 +295,9 @@ def train_model(name, experiment, image_size, training_data_list, training_mask_
     if preprocess_mask is not None:
         # Apply mask after gradients - masking first only gets overwritten
         pp = ImagePreprocessMask(preprocess_mask, pp)
+
+    if preprocess_fisher is True:
+        pp = ImagePreprocessFisherize(pp)
 
     if pp is not None:
         # Instantiate pre-processed data sequences for each split
@@ -379,7 +384,8 @@ model_specs = {
     'reg': [16, 32, 64, 128, 256]  # ~2M parameters
 }
 
-experiments = 2
+experiments = 1
+ex_base = 3
 rounds = 20
 epochs = 10
 base = 0
@@ -392,34 +398,34 @@ f.write('name,experiment,round,precision,recall,f1,accuracy,time\n')  # header r
 
 for name in model_specs:
 
-    # for gl in gradient_levels:
-    #     s_lead = '_'.join(['gd_only', name] + [str(i) for i in gl])
+    for gl in gradient_levels:
+        s_lead = '_'.join(['image-grad', name] + [str(i) for i in gl])
 
-    #     for ex in range(3, 3+experiments):
-    #         for r in range(base, rounds+base):
-    #             data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
-    #                             training_mask_list=training_mask_list, model_spec=model_specs[
-    #                                 name], preprocess_list=gl,
-    #                             preprocess_stretch=True, keep_image=False,
-    #                             load_model=(r is not 0), epochs=epochs)
-    #             s = ','.join([s_lead, str(ex), str(r)]
-    #                          + [str(i) for i in data])
-    #             s += '\n'
-    #             f.write(s)
-    #             f.flush()
+        for ex in range(ex_base, ex_base + experiments):
+            for r in range(base, rounds+base):
+                data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
+                                   training_mask_list=training_mask_list, model_spec=model_specs[
+                                       name], preprocess_list=gl,
+                                   preprocess_stretch=True, preprocess_fisher=False, keep_image=False,
+                                   load_model=(r is not 0), epochs=epochs)
+                s = ','.join([s_lead, str(ex), str(r)]
+                             + [str(i) for i in data])
+                s += '\n'
+                f.write(s)
+                f.flush()
 
-    s_lead = name
-    for ex in range(experiments):
+    # s_lead = name
+    # for ex in range(experiments):
 
-        for r in range(base, rounds+base):
-            data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
-                               training_mask_list=training_mask_list, model_spec=model_specs[
-                                   name], preprocess_list=None, load_model=(r is not 0),
-                               epochs=epochs)
-            s = ','.join([s_lead, str(ex), str(r)] + [str(i) for i in data])
-            s += '\n'
-            f.write(s)
-            f.flush()
+    #     for r in range(base, rounds+base):
+    #         data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
+    #                            training_mask_list=training_mask_list, model_spec=model_specs[
+    #                                name], preprocess_list=None, load_model=(r is not 0),
+    #                            epochs=epochs)
+    #         s = ','.join([s_lead, str(ex), str(r)] + [str(i) for i in data])
+    #         s += '\n'
+    #         f.write(s)
+    #         f.flush()
 
     # s_lead = 'gd_only_'+name
     # for gl in gradient_levels:
