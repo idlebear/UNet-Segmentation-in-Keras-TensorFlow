@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 import seaborn as sbn
 
 df = pd.read_csv('data.csv', ',')
-df_mean = df[df['round'] > 20].groupby('name').mean()
+df['round'] += 1  # because it starts at zero
+df_mean = df[df['round'] >= 5].groupby('name').mean()
 print(df_mean)
 
 # fig = plt.figure()

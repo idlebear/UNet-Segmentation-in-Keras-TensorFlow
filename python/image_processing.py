@@ -39,8 +39,6 @@ def gradient_layer(img):
 
 
 def smoothed_gradients(img, sigmas, keep_image):
-
-    img = np.array(img)
     shape = np.shape(img)
     if keep_image:
         sg_img = np.copy(img).astype(np.uint8)

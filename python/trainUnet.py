@@ -116,10 +116,8 @@ class RoadSeq(keras.utils.Sequence):
             if self.gt_list is not None:
                 mask = np.array(mask).astype('float32')
 
-            try:
+            if self.preprocess_fn is not None:
                 img = self.preprocess_fn(img)
-            except Exception:
-                pass
 
             if self.augment_data:
                 if random.random() < 0.3:
@@ -148,7 +146,7 @@ class RoadSeq(keras.utils.Sequence):
 
             #
             # normalize
-            x[j, :, :, :] = img / 255.0
+            x[j, :, :, :] = tf.cast(img, tf.float32) / 255.0
             if self.gt_list is not None:
                 # only keep the blue layer (road)
                 y[j, :, :, 0] = mask[:, :, 2] / 255.0
@@ -398,34 +396,34 @@ f.write('name,experiment,round,precision,recall,f1,accuracy,time\n')  # header r
 
 for name in model_specs:
 
-    for gl in gradient_levels:
-        s_lead = '_'.join(['image-grad', name] + [str(i) for i in gl])
+    # for gl in gradient_levels:
+    #     s_lead = '_'.join(['image-grad', name] + [str(i) for i in gl])
 
-        for ex in range(ex_base, ex_base + experiments):
-            for r in range(base, rounds+base):
-                data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
-                                   training_mask_list=training_mask_list, model_spec=model_specs[
-                                       name], preprocess_list=gl,
-                                   preprocess_stretch=True, preprocess_fisher=False, keep_image=False,
-                                   load_model=(r is not 0), epochs=epochs)
-                s = ','.join([s_lead, str(ex), str(r)]
-                             + [str(i) for i in data])
-                s += '\n'
-                f.write(s)
-                f.flush()
+    #     for ex in range(ex_base, ex_base + experiments):
+    #         for r in range(base, rounds+base):
+    #             data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
+    #                                training_mask_list=training_mask_list, model_spec=model_specs[
+    #                                    name], preprocess_list=gl,
+    #                                preprocess_stretch=True, preprocess_fisher=False, keep_image=False,
+    #                                load_model=(r is not 0), epochs=epochs)
+    #             s = ','.join([s_lead, str(ex), str(r)]
+    #                          + [str(i) for i in data])
+    #             s += '\n'
+    #             f.write(s)
+    #             f.flush()
 
-    # s_lead = name
-    # for ex in range(experiments):
+    s_lead = name
+    for ex in range(experiments):
 
-    #     for r in range(base, rounds+base):
-    #         data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
-    #                            training_mask_list=training_mask_list, model_spec=model_specs[
-    #                                name], preprocess_list=None, load_model=(r is not 0),
-    #                            epochs=epochs)
-    #         s = ','.join([s_lead, str(ex), str(r)] + [str(i) for i in data])
-    #         s += '\n'
-    #         f.write(s)
-    #         f.flush()
+        for r in range(base, rounds+base):
+            data = train_model(name=s_lead, experiment=ex, image_size=image_size, training_data_list=training_data_list,
+                               training_mask_list=training_mask_list, model_spec=model_specs[
+                                   name], preprocess_list=None, load_model=(r is not 0),
+                               epochs=epochs)
+            s = ','.join([s_lead, str(ex), str(r)] + [str(i) for i in data])
+            s += '\n'
+            f.write(s)
+            f.flush()
 
     # s_lead = 'gd_only_'+name
     # for gl in gradient_levels:

@@ -1,19 +1,18 @@
-from image_processing import ImagePreprocessGradient, ImagePreprocessStretchedGradient
 from PIL import Image
 from timeit import default_timer as timer
 from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
-from tensorflow.keras import Model
-from tensorflow.keras.layers import Input, Conv2D
-from tensorflow.keras.layers import Conv2D, MaxPool2D, Concatenate, UpSampling2D
-import matplotlib.pyplot as plt
-import random
 
 import PIL
 from PIL import ImageOps, Image
-
+import matplotlib.pyplot as plt
 import numpy as np
+import random
 import os
+
+from image_processing import ImagePreprocessFisherize
+from image_processing import ImagePreprocessGradient
+from image_processing import ImagePreprocessStretchedGradient
 
 # test parameters -- the current model uses 4 compression layers, each halving the image size.
 # To ensure that the size of the output is the same as the input, resize the images to be a factor of
@@ -167,9 +166,9 @@ def calculate_error(results, mask_list):
 img = np.array(img)
 
 
-prepro = ImagePreprocessStretchedGradient([1, 2, 5])
+prepro = ImagePreprocessGradient([1, 2, 5])
+prepro = ImagePreprocessFisherize(prepro)
 sm_grad = prepro.preprocess()(img)
-# sm_grad = smoothed_gradients(np.round(x[0]*255), [0,1,2,3,5,10])
 
 fig = plt.figure()
 plt.imshow(img)

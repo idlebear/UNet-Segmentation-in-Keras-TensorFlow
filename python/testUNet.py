@@ -110,10 +110,8 @@ class RoadSeq(keras.utils.Sequence):
                 if self.gt_list is not None:
                     mask = load_img(mask_path)
 
-            try:
+            if self.preprocess_fn is not None:
                 img = self.preprocess_fn(img)
-            except Exception:
-                pass
 
             img = np.array(img).astype('float32')
             if self.gt_list is not None:
@@ -159,8 +157,8 @@ class RoadSeq(keras.utils.Sequence):
         return x, y
 
 
-training_data_list, training_mask_list = load_data_list('./data_road/testing/image_2',
-                                                        None)
+training_data_list, training_mask_list = load_data_list('./data_road/training/image_2',
+                                                        './data_road/training/gt_image_2')
 
 
 def display_results(data, masks, results):
@@ -168,22 +166,24 @@ def display_results(data, masks, results):
     # fig.subplots_adjust(hspace=0.4, wspace=0.4)
     t = np.shape(data)
 
-    for j in range(5):
+    for i in range(15):
 
         # i = random.randint(0, t[0])
 
-        plt.figure(figsize)
+        plt.figure(figsize=(10, 4))
         # image = np.reshape(data[i], image_size+(3,))
         image = Image.open(data[i])
         image = image.resize((768, 224))
         plt.imshow(image)
 
         if masks is not None:
-            plt.figure()
-            plt.imshow(np.reshape(masks[i]*255, image_size), cmap="gray")
+            plt.figure(figsize=(10, 4))
+            mask = Image.open(masks[i])
+            mask = np.array(mask.resize((768, 224)))
+            plt.imshow(mask[:, :, 2], cmap="gray")
 
         for r in results:
-            plt.figure()
+            plt.figure(figsize=(10, 4))
             plt.imshow(image)
             plt.imshow(np.reshape(r[i]*255, image_size),
                        'Oranges', interpolation='none', alpha=0.7)
@@ -242,6 +242,8 @@ def run_demo(name, experiment, image_size, training_data_list, training_mask_lis
     results = model.predict(x)
     results = np.array(results > 0.5).astype(np.uint8)
 
+    display_results(test_input_img_paths, test_target_img_paths, [results])
+
     return results
 
 
@@ -257,20 +259,17 @@ model_specs = {
 }
 
 
-img_grad = run_demo(name='gd_only_reg_0_1_2_5', experiment=1, image_size=image_size,
+reg = run_demo(name='reg', experiment=3, image_size=image_size,
                     training_data_list=training_data_list,
                     training_mask_list=training_mask_list,
-                    model_spec=model_specs['reg'], preprocess_list=[0, 1, 2, 5])
+                    model_spec=model_specs['reg'], preprocess_list=None)
 
-reg = run_demo(name='reg', experiment=1, image_size=image_size,
-               training_data_list=training_data_list,
-               training_mask_list=training_mask_list,
-               model_spec=model_specs['reg'], preprocess_list=None)
+# img_grad = run_demo(name='image-grad_reg_1_2_5.unibear', experiment=3, image_size=image_size,
+#                     training_data_list=training_data_list,
+#                     training_mask_list=training_mask_list,
+#                     model_spec=model_specs['reg'], preprocess_list=[0, 1, 2, 5])
 
-grad = run_demo(name='gd_only_reg_1_2_5', experiment=1, image_size=image_size,
-                training_data_list=training_data_list,
-                training_mask_list=training_mask_list,
-                model_spec=model_specs['reg'], preprocess_list=[1, 2, 5], preprocess_stretch=True)
-
-display_results(
-    training_data_list[-test_samples:], None, [img_grad, reg, grad])
+# grad = run_demo(name='scaled-grad_reg_1_2_5', experiment=3, image_size=image_size,
+#                 training_data_list=training_data_list,
+#                 training_mask_list=training_mask_list,
+#                 model_spec=model_specs['reg'], preprocess_list=[1, 2, 5], preprocess_stretch=True)
